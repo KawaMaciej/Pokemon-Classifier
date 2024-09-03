@@ -4,11 +4,11 @@ import torch
 from torchvision import datasets, transforms, models
 import torch.nn as nn
 from pokemon_classifier import predict_streamlit, api_info
+import json
 
-directory = "/Users/kawam/projekt_ai/pokemon classifier/PokemonData"
-dataset = datasets.ImageFolder(directory)
 
-class_names = dataset.classes
+with open('class_names.json', 'r') as f:
+    class_names = json.load(f)
 
 model = models.efficientnet_b0(pretrained=True)
 
@@ -30,11 +30,13 @@ train_transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+
 st.set_page_config(
     page_title="Pokémon Classifier",
     page_icon=":sparkles:",
     layout="centered",
 )
+
 
 st.sidebar.title("About")
 st.sidebar.write("""
