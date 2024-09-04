@@ -1,7 +1,7 @@
 import streamlit as st
 from PIL import Image
 import torch
-from torchvision import datasets, transforms, models
+from torchvision import transforms, models
 import torch.nn as nn
 from pokemon_classifier import predict_streamlit, api_info
 import json
@@ -21,11 +21,8 @@ model = model.to(device)
 model.load_state_dict(torch.load('model.pth', map_location=device))
 model.eval()
 
-train_transform = transforms.Compose([
-    transforms.RandomRotation(20),
-    transforms.RandomHorizontalFlip(),
+test_transform = transforms.Compose([
     transforms.Resize((360, 360)),
-    transforms.RandomAffine(degrees=0, shear=20, scale=(0.8, 1.2)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
@@ -60,7 +57,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file)
     
     st.image(image, caption='Uploaded Image', use_column_width=False, width=400,)
-    predictions = predict_streamlit(image, model, train_transform, class_names)
+    predictions = predict_streamlit(image, model, test_transform, class_names)
     
 
     pokemon_info = api_info(predictions.lower())
