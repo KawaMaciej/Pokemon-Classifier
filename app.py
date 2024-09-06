@@ -18,7 +18,8 @@ model.classifier[1] = nn.Linear(num_ftrs, 150)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-model.load_state_dict(torch.load('model.pth', map_location=device))
+model.load_state_dict(torch.load('models\model_basic.pth', map_location=device))
+
 model.eval()
 
 test_transform = transforms.Compose([

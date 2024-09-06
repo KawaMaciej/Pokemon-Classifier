@@ -1,11 +1,8 @@
 
-import random
 import os 
 import torch
-import torchvision
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision.datasets import ImageFolder
 from PIL import Image
 from tqdm import tqdm
 import requests
@@ -13,10 +10,11 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import torch.nn as nn
 from torch.utils.data import random_split, DataLoader
-from torchvision import datasets, transforms, models
+from torchvision import datasets, models
 import torch 
 import os
-from typing import Tuple, List, Callable
+from typing import Tuple, List, Callable, Optional
+import torch.optim.lr_scheduler as lr_scheduler
 
 def save_checkpoint(model: nn.Module, optimizer: optim.Optimizer, epoch: int, best_val_loss: float, epochs_no_improve: int, path: str) -> None:
     """Saves a checkpoint of the model, optimizer, epoch, best_val_loss, and epochs_no_improve at the specified path."""
@@ -78,7 +76,7 @@ def validate(model: nn.Module, val_loader: DataLoader, criterion: nn.Module, cla
                 if predicted[i] != labels[i]:
                     wrong_predictions.append((inputs[i].cpu(), predicted[i].cpu(), labels[i].cpu()))
 
-    for i, (img, pred, label) in enumerate(wrong_predictions[:10]):
+    for i, (img, pred, label) in enumerate(wrong_predictions[:1]):
         img = img.permute(1, 2, 0) 
         img = img.numpy()
 
@@ -92,7 +90,12 @@ def validate(model: nn.Module, val_loader: DataLoader, criterion: nn.Module, cla
     model.train()
     return val_loss / len(val_loader), val_accuracy
 
-def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, criterion: nn.Module, optimizer: optim.Optimizer, num_epochs: int, patience: int, checkpoint_path: str, class_names: List[str]) -> None:
+def train(model: nn.Module, train_loader: DataLoader, 
+    val_loader: DataLoader, criterion: nn.Module, 
+    optimizer: optim.Optimizer,
+    num_epochs: int, patience: int, checkpoint_path: str, class_names: List[str], 
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
+    ) -> None:
     """
     Trains a model on the given train_loader and validates it on the given val_loader.
     Args:
@@ -129,7 +132,7 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cr
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
-
+            scheduler.step()
             train_loss = running_loss / len(train_loader)
             train_accuracy = 100 * correct / total
 
@@ -156,7 +159,7 @@ def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, cr
 
     print('Finished Training')
 
-def predict_image(image_path: str, model: nn.Module, val_transform: Callable, labels: List[str]) -> str:
+def predict_image(image_path: str, model: nn.Module, transform: Callable, labels: List[str]) -> str:
     """
     Predicts the class of a given image using the given model and transform.
     Args:
@@ -168,7 +171,7 @@ def predict_image(image_path: str, model: nn.Module, val_transform: Callable, la
         The predicted class of the given image.
     """
     image = Image.open(image_path).convert('RGB')
-    image = val_transform(image)
+    image = transform(image)
     
     image = image.unsqueeze(0)
     
@@ -258,40 +261,43 @@ def predict_streamlit(image, model, transform, class_names):
 
     return predicted_label
 
-def Pokemon_classifier_trainer(directory: str, checkpoint_path: str, train_transform: Callable, 
+def classifier_trainer(directory: str, checkpoint_path: str, train_transform: Callable, 
                                train_split: float = 0.8, 
                                num_epochs: int = 100, 
                                learning_rate: float = 0.001, 
                                patience: int = 25, 
                                criterion: nn.Module = nn.CrossEntropyLoss(),
-                               batch_size: int = 32) -> str:
+                               batch_size: int = 32,
+                               model: nn.Module = models.efficientnet_b0(pretrained=True),
+                               out: str = 'model',
+                               weight_decay: float = 0.001) -> str:
     """
-    Trains a model to classify pokemon images in a given directory, saving checkoints at the given path.
+    Trains a model to classify Pokémon images in a given directory, saving checkpoints at the specified path.
 
     Args:
-        directory (str): The path to the directory containing the pokemon images, organized by class in subdirectories.
-        checkpoint_path (str): The path to save the model checkpoints.
-        train_transform (callable): The transformation to be applied to the training data.
+        directory (str): The path to the directory containing Pokémon images, organized by class in subdirectories.
+        checkpoint_path (str): The path where model checkpoints will be saved.
+        train_transform (Callable): The transformation to be applied to the training data.
         train_split (float, optional): The proportion of the data to be used for training, with the remainder used for validation. Defaults to 0.8.
-        num_epochs (int, optional): The number of epochs to train for. Defaults to 100.
-        learning_rate (float, optional): The learning rate to be used by the optimizer. Defaults to 0.001.
-        patience (int, optional): The number of epochs to wait before stopping training if the validation loss does not improve. Defaults to 25.
-        criterion (nn.Module, optional): The loss function to be used. Defaults to CrossEntropyLoss.
-
+        num_epochs (int, optional): The number of epochs to train the model. Defaults to 100.
+        learning_rate (float, optional): The learning rate for the optimizer. Defaults to 0.001.
+        patience (int, optional): The number of epochs to wait for improvement in validation loss before stopping training early. Defaults to 25.
+        criterion (nn.Module, optional): The loss function used for training. Defaults to `CrossEntropyLoss`.
+        batch_size (int, optional): The number of samples per batch. Defaults to 32.
+        model (nn.Module, optional): The neural network model to be trained. Defaults to `EfficientNet-B0` with pre-trained weights.
+        out (str, optional): Directory name or prefix for saving the trained model. Defaults to 'model'.
+        weight_decay (float, optional): The weight decay (L2 penalty) applied to the optimizer. Defaults to 0.001.
     Returns:
-        str: A message indicating that training is complete.
+        str: A message indicating that training is complete, including any relevant details about model saving and early stopping.
     """
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.20)
+
+
     dataset = datasets.ImageFolder(directory)
 
     class_names=dataset.classes
-
-    model = models.efficientnet_b0(pretrained=True)
-
-    num_ftrs = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(num_ftrs, 150)
-
-    model = model.to('cuda')
-        
         
     train_dataset = datasets.ImageFolder(directory, transform=train_transform)
     train_size = int(train_split * len(train_dataset))
@@ -301,10 +307,8 @@ def Pokemon_classifier_trainer(directory: str, checkpoint_path: str, train_trans
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    train(model, train_loader,val_loader, criterion, optimizer, num_epochs, patience, checkpoint_path, class_names)
-    torch.save(model.state_dict(), 'model.pth')
+    train(model, train_loader, val_loader, criterion, optimizer, num_epochs, patience, checkpoint_path, class_names, scheduler)
+    torch.save(model.state_dict(), f'models/{out}.pth')
 
 
     return "Training Complete"    
