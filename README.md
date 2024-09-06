@@ -111,9 +111,12 @@ The repository is organized as follows:
 pokemon-classifier/
 ├── app.py                     # Streamlit app
 ├── Dockerfile
-├── class_names                   
+├── class_names
+├── models/
+│   └── model.pth               
 ├── notebooks/
 │   └── training_notebook.ipynb  # Jupyter notebook for model training
+│   └── config.json
 ├── PokemonData/
 │   └── folders with 150 pokemon
 ├── model.pth
